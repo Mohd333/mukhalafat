@@ -1,0 +1,1972 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام رصد المخالفات السلوكية للمرحلة الابتدائية</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- إضافة مكتبة Excel.js لاستيراد بيانات الطلاب -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <!-- إضافة مكتبة Chart.js للإحصائيات المتقدمة -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap');
+        * {
+            font-family: 'Tajawal', sans-serif;
+        }
+        .violation-first { background-color: #dcfce7; }
+        .violation-second { background-color: #fef9c3; }
+        .violation-third { background-color: #fef3c7; }
+        .violation-fourth { background-color: #fee2e2; }
+        .selected-violation { border: 2px solid #374151; }
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+        }
+
+        /* إضافة أنماط للإحصائيات */
+        .stats-card {
+            background-color: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .stats-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #3b82f6;
+        }
+        
+        /* أنماط لنافذة النسخ الاحتياطي */
+        .backup-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .backup-modal {
+            background-color: white;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">نظام رصد المخالفات السلوكية</h1>
+            <p class="text-gray-600">المرحلة الابتدائية</p>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <!-- بيانات المخالفة -->
+            <div class="col-span-1 lg:col-span-3">
+                <!-- استيراد بيانات الطلاب من Excel -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">استيراد بيانات الطلاب</h2>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">اختر ملف Excel يحتوي على بيانات الطلاب:</label>
+                        <input type="file" id="excelFile" class="border border-gray-300 rounded-md p-2 w-full" accept=".xlsx, .xls" />
+                    </div>
+                    
+                    <div class="grid grid-cols-1 gap-3">
+                        <button class="bg-blue-600 hover:bg-blue-700 text-white rounded-md py-2" onclick="importStudentsFromExcel()">
+                            <div class="flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                                </svg>
+                                استيراد البيانات
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">بيانات المخالفة</h2>
+                    
+                    <!-- اختيار الفصل والطالب -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">اختر الفصل:</label>
+                            <select id="classSelect" class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500" onchange="loadStudents()">
+                                <option value="">اختر الفصل</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">اختر الطالب:</label>
+                            <select id="studentSelect" class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">اختر الطالب</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- نوع المخالفة -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">درجة المخالفة:</label>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                            <div id="degree1" class="violation-degree violation-first cursor-pointer rounded-md p-3 text-center" onclick="selectDegree(1)">
+                                الدرجة الأولى
+                                <div class="text-sm text-gray-600">خصم درجة واحدة</div>
+                            </div>
+                            <div id="degree2" class="violation-degree violation-second cursor-pointer rounded-md p-3 text-center" onclick="selectDegree(2)">
+                                الدرجة الثانية
+                                <div class="text-sm text-gray-600">خصم درجتين</div>
+                            </div>
+                            <div id="degree3" class="violation-degree violation-third cursor-pointer rounded-md p-3 text-center" onclick="selectDegree(3)">
+                                الدرجة الثالثة
+                                <div class="text-sm text-gray-600">خصم ثلاث درجات</div>
+                            </div>
+                            <div id="degree4" class="violation-degree violation-fourth cursor-pointer rounded-md p-3 text-center" onclick="selectDegree(4)">
+                                الدرجة الرابعة
+                                <div class="text-sm text-gray-600">خصم عشر درجات</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- اختيار المخالفة -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">اختر المخالفة:</label>
+                        <select id="violationType" class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">اختر المخالفة</option>
+                        </select>
+                    </div>
+                    
+                    <!-- الملاحظة -->
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">ملاحظات إضافية:</label>
+                        <textarea id="noteInput" class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500" rows="3" placeholder="أدخل أي ملاحظات إضافية هنا..."></textarea>
+                    </div>
+                    
+                    <!-- الجهة المرسلة - تم تعديلها -->
+                    <div class="mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">الجهة:</label>
+                        <select id="senderSelect" class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">اختر الجهة</option>
+                            <option value="إدارة المدرسة">إدارة المدرسة</option>
+                            <option value="شؤون الطلاب">شؤون الطلاب</option>
+                            <option value="التوجيه الطلابي">التوجيه الطلابي</option>
+                            <option value="custom">إضافة جهة مخصصة</option>
+                        </select>
+                    </div>
+                    
+                    <!-- إضافة جهة مخصصة -->
+                    <div id="customSenderDiv" class="hidden mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">اسم الجهة المخصصة:</label>
+                        <input type="text" id="customSenderName" class="w-full border border-gray-300 rounded-md p-2 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="أدخل اسم الجهة المخصصة..." />
+                    </div>
+                    
+                    <!-- أزرار العمليات -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <button class="bg-green-600 hover:bg-green-700 text-white rounded-md py-3" onclick="saveOperation()">
+                            <div class="flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                                </svg>
+                                حفظ المخالفة
+                            </div>
+                        </button>
+                        <button class="bg-blue-600 hover:bg-blue-700 text-white rounded-md py-3" onclick="printReceipt()">
+                            <div class="flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v2a2 2 0 002 2h6a2 2 0 002-2v-2h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clip-rule="evenodd" />
+                                </svg>
+                                طباعة إيصال
+                            </div>
+                        </button>
+                        <button class="bg-emerald-600 hover:bg-emerald-700 text-white rounded-md py-3" onclick="sendWhatsApp()">
+                            <div class="flex items-center justify-center">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 ml-1" viewBox="0 0 20 20" fill="currentColor">
+                                    <path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z" />
+                                    <path d="M15 7v2a4 4 0 01-4 4H9.828l-1.766 1.767c.28.149.599.233.938.233h2l3 3v-3h2a2 2 0 002-2V9a2 2 0 00-2-2h-1z" />
+                                </svg>
+                                إرسال عبر واتساب
+                            </div>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- الإحصائيات المتقدمة - إضافة جديدة -->
+                <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">الإحصائيات المتقدمة</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div class="stats-card text-center">
+                            <div class="text-sm text-gray-600">إجمالي المخالفات</div>
+                            <div id="totalViolations" class="stats-value">0</div>
+                        </div>
+                        <div class="stats-card text-center">
+                            <div class="text-sm text-gray-600">عدد الطلاب المخالفين</div>
+                            <div id="totalStudents" class="stats-value">0</div>
+                        </div>
+                        <div class="stats-card text-center">
+                            <div class="text-sm text-gray-600">إجمالي الدرجات المحسومة</div>
+                            <div id="totalPoints" class="stats-value">0</div>
+                        </div>
+                        <div class="stats-card text-center">
+                            <div class="text-sm text-gray-600">متوسط المخالفات للطالب</div>
+                            <div id="avgViolations" class="stats-value">0</div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <h3 class="font-semibold mb-2">المخالفات حسب الدرجة</h3>
+                            <div style="height: 250px;">
+                                <canvas id="violationsByDegreeChart"></canvas>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold mb-2">المخالفات حسب الفصل</h3>
+                            <div style="height: 250px;">
+                                <canvas id="violationsByClassChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <h3 class="font-semibold mb-2">أكثر المخالفات تكراراً</h3>
+                            <div class="overflow-auto max-h-60">
+                                <table class="min-w-full border border-gray-300">
+                                    <thead class="bg-gray-100">
+                                        <tr>
+                                            <th class="py-2 px-3 border-b text-right">المخالفة</th>
+                                            <th class="py-2 px-3 border-b text-right">العدد</th>
+                                            <th class="py-2 px-3 border-b text-right">النسبة</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="commonViolationsList">
+                                        <!-- سيتم تعبئة هذا القسم بالبيانات -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold mb-2">الطلاب الأكثر مخالفات</h3>
+                            <div class="overflow-auto max-h-60">
+                                <table class="min-w-full border border-gray-300">
+                                    <thead class="bg-gray-100">
+                                        <tr>
+                                            <th class="py-2 px-3 border-b text-right">اسم الطالب</th>
+                                            <th class="py-2 px-3 border-b text-right">الفصل</th>
+                                            <th class="py-2 px-3 border-b text-right">العدد</th>
+                                            <th class="py-2 px-3 border-b text-right">الدرجات</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="topStudentsList">
+                                        <!-- سيتم تعبئة هذا القسم بالبيانات -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white rounded-md py-2 mt-4" onclick="updateAllStatistics()">
+                        تحديث الإحصائيات
+                    </button>
+                </div>
+                <!-- التقارير والعمليات -->
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h2 class="text-xl font-semibold mb-4 border-b pb-2">سجل المخالفات والتقارير</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+                        <button class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-md py-2 px-3" onclick="displayOperations()">
+                            عرض جميع المخالفات
+                        </button>
+                        <button class="bg-violet-600 hover:bg-violet-700 text-white rounded-md py-2 px-3" onclick="filterByStudent()">
+                            تقرير حسب الطالب
+                        </button>
+                        <button class="bg-teal-600 hover:bg-teal-700 text-white rounded-md py-2 px-3" onclick="filterByClass()">
+                            تقرير حسب الفصل
+                        </button>
+                        <button class="bg-gray-700 hover:bg-gray-800 text-white rounded-md py-2 px-3" onclick="printAllOperations()">
+                            طباعة تقرير شامل
+                        </button>
+                    </div>
+                    
+                    <!-- أزرار النسخ الاحتياطي - إضافة جديدة -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                        <button class="bg-amber-600 hover:bg-amber-700 text-white rounded-md py-2 px-3" onclick="createBackup()">
+                            إنشاء نسخة احتياطية
+                        </button>
+                        <button class="bg-lime-600 hover:bg-lime-700 text-white rounded-md py-2 px-3" onclick="showRestoreBackupDialog()">
+                            استعادة من نسخة احتياطية
+                        </button>
+                        <button class="w-full bg-red-600 hover:bg-red-700 text-white rounded-md py-2 px-3" onclick="clearOperations()">
+                            مسح جميع البيانات المحفوظة
+                        </button>
+                    </div>
+                    
+                    <div id="operationsContainer" class="mt-4 hidden">
+                        <div class="overflow-x-auto">
+                            <table id="operationsTable" class="min-w-full bg-white border border-gray-300">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="py-2 px-3 border-b text-right">التاريخ</th>
+                                        <th class="py-2 px-3 border-b text-right">الفصل</th>
+                                        <th class="py-2 px-3 border-b text-right">الطالب</th>
+                                        <th class="py-2 px-3 border-b text-right">المخالفة</th>
+                                        <th class="py-2 px-3 border-b text-right">درجة المخالفة</th>
+                                        <th class="py-2 px-3 border-b text-right">خصم الدرجات</th>
+                                        <th class="py-2 px-3 border-b text-right">الجهة</th>
+                                        <th class="py-2 px-3 border-b text-right">إجراءات</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- سيتم إضافة البيانات هنا -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- قائمة المخالفات -->
+            <div class="col-span-1 no-print">
+                <div class="bg-white rounded-lg shadow-md p-4 sticky top-4">
+                    <h3 class="font-semibold mb-2 pb-2 border-b">المخالفات حسب الدرجة</h3>
+                    
+                    <div class="mb-2">
+                        <div class="font-medium text-sm bg-green-100 p-2 rounded">الدرجة الأولى (1 درجة)</div>
+                        <ul class="text-sm mt-1 mr-4 list-disc">
+                            <li class="mb-1">عدم التقيد بالزي المدرسي</li>
+                            <li class="mb-1">التأخر الصباحي</li>
+                            <li class="mb-1">عدم حضور الاصطفاف الصباحي</li>
+                            <li class="mb-1">التأخر عن الاصطفاف الصباحي</li>
+                            <li class="mb-1">التأخر في الدخول إلى الحصص</li>
+                            <li class="mb-1">تناول الأطعمة أثناء الدرس</li>
+                            <li class="mb-1">النوم داخل الفصل</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <div class="font-medium text-sm bg-yellow-100 p-2 rounded">الدرجة الثانية (2 درجة)</div>
+                        <ul class="text-sm mt-1 mr-4 list-disc">
+                            <li class="mb-1">عدم حضور الحصة أو الهروب منها</li>
+                            <li class="mb-1">الدخول/الخروج من الفصل دون استئذان</li>
+                            <li class="mb-1">إثارة الفوضى داخل الفصل</li>
+                            <li class="mb-1">الشجار أو المضاربات</li>
+                            <li class="mb-1">التلفظ بكلمات نابية</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <div class="font-medium text-sm bg-orange-100 p-2 rounded">الدرجة الثالثة (3 درجات)</div>
+                        <ul class="text-sm mt-1 mr-4 list-disc">
+                            <li class="mb-1">إلحاق الضرر المتعمد بالمدرسة</li>
+                            <li class="mb-1">سرقة ممتلكات الطلبة أو المدرسة</li>
+                            <li class="mb-1">التعرض للطلبة بالضرب</li>
+                            <li class="mb-1">الهروب من المدرسة</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mb-2">
+                        <div class="font-medium text-sm bg-red-100 p-2 rounded">الدرجة الرابعة (10 درجات)</div>
+                        <ul class="text-sm mt-1 mr-4 list-disc">
+                            <li class="mb-1">الإساءة للدين أو الدولة</li>
+                            <li class="mb-1">التحرش الجنسي</li>
+                            <li class="mb-1">التدخين أو حيازة السجائر</li>
+                            <li class="mb-1">حيازة آلة حادة</li>
+                            <li class="mb-1">التنمر بجميع أنواعه</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Print Receipt Template (Hidden by default) -->
+    <div id="receiptTemplate" class="hidden print-only"></div>
+    
+    <!-- Restore Backup Dialog (Hidden by default) -->
+    <div id="restoreBackupDialog" class="backup-overlay hidden">
+        <div class="backup-modal">
+            <h3 class="text-lg font-semibold mb-4">استعادة من نسخة احتياطية</h3>
+            <p class="mb-4 text-sm text-gray-600">الرجاء اختيار ملف النسخة الاحتياطية الذي تم إنشاؤه مسبقًا:</p>
+            
+            <div class="mb-4">
+                <input type="file" id="backupFile" class="border border-gray-300 rounded-md p-2 w-full" accept=".json" />
+            </div>
+            
+            <div class="flex justify-end gap-2">
+                <button class="bg-gray-500 hover:bg-gray-600 text-white rounded-md py-2 px-4" onclick="closeRestoreBackupDialog()">إلغاء</button>
+                <button class="bg-blue-600 hover:bg-blue-700 text-white rounded-md py-2 px-4" onclick="restoreBackup()">استعادة</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // بيانات المخالفات
+        const violationsByDegree = {
+            1: [
+                { id: '1-1', name: 'عدم التقيد بالزي المدرسي', points: 1 },
+                { id: '1-2', name: 'التأخر الصباحي', points: 1 },
+                { id: '1-3', name: 'عدم حضور الاصطفاف الصباحي', points: 1 },
+                { id: '1-4', name: 'التأخر عن الاصطفاف الصباحي أو العبث أثناءه', points: 1 },
+                { id: '1-5', name: 'التأخر في الدخول إلى الحصص', points: 1 },
+                { id: '1-6', name: 'تناول الأطعمة أو المشروبات أثناء الدرس بدون استئذان', points: 1 },
+                { id: '1-7', name: 'النوم داخل الفصل', points: 1 },
+                { id: '1-8', name: 'تكرار خروج ودخول الطلبة من البوابة قبل وقت الحضور والانصراف', points: 1 },
+                { id: '1-9', name: 'التجمهر أمام بوابة المدرسة', points: 1 }
+            ],
+            2: [
+                { id: '2-1', name: 'عدم حضور الحصة الدراسية أو الهروب منها', points: 2 },
+                { id: '2-2', name: 'الدخول أو الخروج من الفصل دون استئذان', points: 2 },
+                { id: '2-3', name: 'دخول فصل آخر دون استئذان', points: 2 },
+                { id: '2-4', name: 'إثارة الفوضى داخل الفصل أو المدرسة أو وسائل النقل المدرسي', points: 2 },
+                { id: '2-5', name: 'الشجار أو الاشتراك في مضاربة جماعية', points: 2 },
+                { id: '2-6', name: 'الإشارة بحركات مخلة بالأدب تجاه الطلبة', points: 2 },
+                { id: '2-7', name: 'التلفظ بكلمات نابية على الطلبة، أو تهديدهم، أو السخرية منهم', points: 2 },
+                { id: '2-8', name: 'إلحاق الضرر المتعمد بممتلكات الطلبة', points: 2 },
+                { id: '2-9', name: 'العبث بتجهيزات المدرسة أو مبانيها', points: 2 },
+                { id: '2-10', name: 'امتهان الكتب الدراسية', points: 2 }
+            ],
+            3: [
+                { id: '3-1', name: 'إلحاق الضرر المتعمد بتجهيزات المدرسة أو مبانيها', points: 3 },
+                { id: '3-2', name: 'سرقة شيء من ممتلكات الطلبة أو المدرسة', points: 3 },
+                { id: '3-3', name: 'التعرض لأحد الطلبة بالضرب', points: 3 },
+                { id: '3-4', name: 'التصوير أو التسجيل الصوتي للطلبة', points: 3 },
+                { id: '3-5', name: 'الهروب من المدرسة', points: 3 },
+                { id: '3-6', name: 'التوقيع عن ولي الأمر من غير علمه', points: 3 },
+                { id: '3-7', name: 'إحضار أو استخدام المواد أو الألعاب الخطرة إلى المدرسة', points: 3 }
+            ],
+            4: [
+                { id: '4-1', name: 'الإساءة أو الاستهزاء بشيء من شعائر الإسلام', points: 10 },
+                { id: '4-2', name: 'الإساءة للدولة أو رموزها', points: 10 },
+                { id: '4-3', name: 'التحرش الجنسي', points: 10 },
+                { id: '4-4', name: 'إشعال النار داخل المدرسة', points: 10 },
+                { id: '4-5', name: 'حيازة السجائر بأنواعها', points: 10 },
+                { id: '4-6', name: 'التدخين بأنواعه داخل المدرسة', points: 10 },
+                { id: '4-7', name: 'حيازة آلة حادة (مثل السكاكين)', points: 10 },
+                { id: '4-8', name: 'الجرائم المعلوماتية بكافة أنواعها', points: 10 },
+                { id: '4-9', name: 'المظاهر أو الصور أو الشعارات التي تدل على الشذوذ الجنسي', points: 10 },
+                { id: '4-10', name: 'التنمّر بجميع أنواعه وأشكاله', points: 10 },
+                { id: '4-11', name: 'حيازة أو عرض المواد الإعلامية الممنوعة', points: 10 },
+                { id: '4-12', name: 'تهديد المعلمين أو الإداريين', points: 10 },
+                { id: '4-13', name: 'التلفظ بألفاظ غير لائقة تجاه المعلمين أو الإداريين', points: 10 },
+                { id: '4-14', name: 'السخرية من المعلمين أو الإداريين', points: 10 },
+                { id: '4-15', name: 'التوقيع عن أحد منسوبي المدرسة', points: 10 },
+                { id: '4-16', name: 'تصوير المعلمين أو الإداريين أو التسجيل الصوتي لهم', points: 10 }
+            ]
+        };
+
+        // إعدادات وثوابت النظام
+        const STORAGE_KEYS = {
+            STUDENTS: 'students_data',
+            STUDENTS_DETAILS: 'students_details', // مفتاح جديد لتخزين البيانات التفصيلية للطلاب
+            VIOLATIONS: 'violations',
+            SETTINGS: 'settings',
+            CUSTOM_SENDERS: 'custom_senders'
+        };
+
+        let studentsByClass = {};
+        let selectedDegree = null;
+        
+        // تحميل البيانات عند تحميل الصفحة
+        window.addEventListener('DOMContentLoaded', () => {
+            // تحميل بيانات الطلاب المحفوظة سابقاً إن وجدت
+            const savedStudents = localStorage.getItem(STORAGE_KEYS.STUDENTS);
+            if (savedStudents) {
+                studentsByClass = JSON.parse(savedStudents);
+                populateClasses();
+            }
+            
+            // إظهار أو إخفاء حقل الجهة المخصصة عند تغيير الجهة
+            document.getElementById('senderSelect').addEventListener('change', function() {
+                const customSenderDiv = document.getElementById('customSenderDiv');
+                if (this.value === 'custom') {
+                    customSenderDiv.classList.remove('hidden');
+                } else {
+                    customSenderDiv.classList.add('hidden');
+                }
+            });
+            
+            // تحديث الإحصائيات
+            updateAllStatistics();
+        });
+
+// استيراد بيانات الطلاب من ملف Excel مستخرج من نظام إدارة الطلاب
+function importStudentsFromExcel() {
+    const fileInput = document.getElementById('excelFile');
+    const file = fileInput.files[0];
+    
+    if (!file) {
+        alert("الرجاء اختيار ملف Excel أولاً.");
+        return;
+    }
+    
+    // إضافة قاموس تحويل رموز الصفوف إلى أسماء الصفوف بالعربية
+    const gradeCodeMap = {
+        '0130': 'أول',
+        '0230': 'ثاني',
+        '0330': 'ثالث',
+        '0430': 'رابع',
+        '0530': 'خامس',
+        '0630': 'سادس',
+        // يمكن إضافة المزيد من الرموز حسب الحاجة
+    };
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            // محاولة استخدام الصفحة الثانية أولاً (الأكثر استخداماً في نظام الطلاب)، وإلا نستخدم الأولى
+            const sheetName = workbook.SheetNames.length > 1 ? workbook.SheetNames[1] : workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            
+            // تحويل البيانات إلى مصفوفة من الصفوف
+            const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+            
+            if (rows.length < 2) {
+                alert("الملف لا يحتوي على بيانات كافية.");
+                return;
+            }
+            
+            console.log("تم تحميل البيانات: ", rows.length, " صفوف");
+            
+            // البحث عن صف العناوين المطلوبة
+            let headerRowIndex = -1;
+            for (let i = 0; i < Math.min(20, rows.length); i++) { // نبحث في أول 20 صف فقط
+                const row = rows[i];
+                // نبحث عن صف يحتوي على عدة عناوين مهمة (عند وجود 3 على الأقل)
+                let matches = 0;
+                if (findInRow(row, "الجوال")) matches++;
+                if (findInRow(row, "الفصل")) matches++;
+                if (findInRow(row, "الصف")) matches++;
+                if (findInRow(row, "اسم الطالب")) matches++;
+                if (findInRow(row, "رقم الطالب")) matches++;
+                
+                if (matches >= 3) { // إذا وجدنا 3 عناوين على الأقل
+                    headerRowIndex = i;
+                    console.log("تم العثور على صف العناوين في الصف رقم: ", i+1);
+                    break;
+                }
+            }
+            
+            if (headerRowIndex === -1) {
+                alert("تعذر العثور على صف العناوين المطلوبة في الملف. الرجاء التأكد من أن الملف يحتوي على البيانات المطلوبة.");
+                return;
+            }
+            
+            // تحديد مواقع الأعمدة المهمة
+            const headers = rows[headerRowIndex];
+            console.log("العناوين المكتشفة: ", headers);
+            
+            const indices = {
+                phone: findColumnIndex(headers, ["الجوال", "جوال", "رقم الجوال", "الموبايل", "الهاتف", "هاتف", "رقم الهاتف", "هاتف ولي الأمر", "رقم ولي الأمر"]),
+                className: findColumnIndex(headers, ["الفصل", "رقم الفصل", "الشعبة", "فصل"]),
+                gradeCode: findColumnIndex(headers, ["الصف", "رقم الصف", "المستوى", "صف"]),
+                studentName: findColumnIndex(headers, ["اسم الطالب", "الاسم", "الطالب", "اسم"]),
+                studentId: findColumnIndex(headers, ["رقم الطالب", "الرقم", "الهوية", "رقم الهوية"])
+            };
+            
+            console.log("مواقع الأعمدة: ", indices);
+            
+            // التحقق من وجود الأعمدة الأساسية على الأقل
+            if (indices.studentName === -1 || (indices.className === -1 && indices.gradeCode === -1)) {
+                alert("لم يتم العثور على الأعمدة المطلوبة (اسم الطالب والفصل/الصف). يرجى التأكد من تنسيق الملف.");
+                return;
+            }
+            
+            // إنشاء هياكل البيانات
+            studentsByClass = {}; // للحفاظ على التوافق مع بقية النظام
+            const studentsDetails = []; // لتخزين معلومات إضافية عن الطلاب
+            
+            // قراءة البيانات بدءًا من الصف التالي لصف العناوين
+            for (let i = headerRowIndex + 1; i < rows.length; i++) {
+                const row = rows[i];
+                
+                // تخطي الصفوف الفارغة
+                if (!row[indices.studentName]) continue;
+                
+                const studentName = String(row[indices.studentName]).trim();
+                
+                // تحديد الفصل (إما من حقل الفصل مباشرة أو بالجمع بين رقم الصف/الفصل)
+                let className = "";
+                if (indices.className !== -1) {
+                    className = String(row[indices.className]).trim();
+                }
+                
+                // إذا وجدنا رمز الصف، نستخدمه لبناء اسم الفصل
+                if (indices.gradeCode !== -1) {
+                    const gradeCode = String(row[indices.gradeCode]).trim();
+                    
+                    // هنا التعديل الرئيسي: تحويل رمز الصف إلى اسم الصف بالعربية
+                    let gradeName = gradeCodeMap[gradeCode] || gradeCode;
+                    
+                    // إذا كان لدينا رمز الصف ورقم الفصل، ندمجهم
+                    if (className && gradeName) {
+                        className = gradeName + '/' + className;
+                    } 
+                    // وإلا نستخدم رمز/اسم الصف فقط
+                    else if (gradeName) {
+                        className = gradeName;
+                    }
+                }
+                
+                // إذا لم نستطع تحديد الفصل، نضع قيمة افتراضية
+                if (!className) {
+                    className = "بدون فصل";
+                }
+                
+                // استخراج رقم الهاتف إن وجد
+                let phoneNumber = "";
+                if (indices.phone !== -1) {
+                    phoneNumber = String(row[indices.phone]).trim();
+                }
+                
+                // استخراج رقم الطالب إن وجد
+                let studentId = "";
+                if (indices.studentId !== -1) {
+                    studentId = String(row[indices.studentId]).trim();
+                }
+                
+                // تنظيف البيانات
+                studentName.replace(/\s+/g, ' '); // إزالة المسافات الزائدة
+                
+                if (studentName) {
+                    // إضافة الطالب إلى قائمة الفصل
+                    if (!studentsByClass[className]) {
+                        studentsByClass[className] = [];
+                    }
+                    if (!studentsByClass[className].includes(studentName)) {
+                        studentsByClass[className].push(studentName);
+                    }
+                    
+                    // تخزين بيانات الطالب الإضافية
+                    studentsDetails.push({
+                        name: studentName,
+                        class: className,
+                        phone: phoneNumber,
+                        studentId: studentId,
+                        originalGradeCode: row[indices.gradeCode] || "" // تخزين الرمز الأصلي للصف
+                    });
+                }
+            }
+            
+            // حفظ البيانات في التخزين المحلي
+            localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(studentsByClass));
+            localStorage.setItem(STORAGE_KEYS.STUDENTS_DETAILS, JSON.stringify(studentsDetails));
+            
+            // تحديث قائمة الفصول
+            populateClasses();
+            
+            const phoneCount = studentsDetails.filter(s => s.phone).length;
+            alert(`تم استيراد البيانات بنجاح!
+- عدد الفصول: ${Object.keys(studentsByClass).length}
+- إجمالي عدد الطلاب: ${studentsDetails.length}
+- عدد الطلاب مع أرقام هواتف: ${phoneCount}`);
+        } catch (error) {
+            console.error("خطأ في قراءة ملف Excel:", error);
+            alert("حدث خطأ أثناء قراءة الملف. الرجاء التأكد من أن الملف بتنسيق Excel صحيح.");
+        }
+    };
+    
+    reader.onerror = function() {
+        alert("حدث خطأ أثناء قراءة الملف.");
+    };
+    
+    reader.readAsArrayBuffer(file);
+}
+
+// البحث عن نص في صف معين
+function findInRow(row, text) {
+    for (let i = 0; i < row.length; i++) {
+        const cell = String(row[i]).trim().toLowerCase();
+        if (cell.includes(text.toLowerCase())) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// البحث عن فهرس العمود باستخدام قائمة من الكلمات المفتاحية
+function findColumnIndex(headers, keywords) {
+    for (let i = 0; i < headers.length; i++) {
+        const header = String(headers[i]).trim().toLowerCase();
+        for (let keyword of keywords) {
+            if (header.includes(keyword.toLowerCase())) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+// تعبئة قائمة الفصول مع ترتيب منطقي للصفوف
+function populateClasses() {
+    const classSelect = document.getElementById('classSelect');
+    classSelect.innerHTML = '<option value="">اختر الفصل</option>';
+    
+    // تعريف أولوية الترتيب للصفوف
+    const gradeOrder = {
+        'أول': 1,
+        'ثاني': 2,
+        'ثالث': 3,
+        'رابع': 4,
+        'خامس': 5,
+        'سادس': 6
+    };
+    
+    // دالة مساعدة للحصول على أولوية الترتيب
+    function getGradeOrderValue(className) {
+        // استخراج اسم الصف من اسم الفصل (مثل "رابع" من "رابع/1")
+        const gradeName = className.split('/')[0];
+        return gradeOrder[gradeName] || 999; // إذا لم يوجد في القائمة، نضعه في النهاية
+    }
+    
+    // فرز أسماء الفصول حسب المستوى الدراسي ثم رقم الفصل
+    const sortedClasses = Object.keys(studentsByClass).sort((a, b) => {
+        const gradeOrderA = getGradeOrderValue(a);
+        const gradeOrderB = getGradeOrderValue(b);
+        
+        // أولاً نقارن حسب المستوى الدراسي
+        if (gradeOrderA !== gradeOrderB) {
+            return gradeOrderA - gradeOrderB;
+        }
+        
+        // ثم نقارن حسب رقم الفصل داخل نفس المستوى
+        const classNumberA = parseInt(a.split('/')[1]) || 0;
+        const classNumberB = parseInt(b.split('/')[1]) || 0;
+        return classNumberA - classNumberB;
+    });
+    
+    // إضافة الفصول المرتبة إلى القائمة
+    sortedClasses.forEach(className => {
+        const option = document.createElement('option');
+        option.value = className;
+        option.textContent = className;
+        classSelect.appendChild(option);
+    });
+}
+        // تحميل الطلاب بناءً على الفصل المختار
+        function loadStudents() {
+            const classSelect = document.getElementById('classSelect').value;
+            const studentSelect = document.getElementById('studentSelect');
+            studentSelect.innerHTML = '<option value="">اختر الطالب</option>';
+            
+            if (classSelect && studentsByClass[classSelect]) {
+                studentsByClass[classSelect].sort().forEach(student => {
+                    const option = document.createElement('option');
+                    option.value = student;
+                    option.textContent = student;
+                    studentSelect.appendChild(option);
+                });
+            }
+        }
+
+        // تحديد درجة المخالفة
+        function selectDegree(degree) {
+            selectedDegree = degree;
+            
+            // إزالة التحديد من كل الدرجات
+            document.querySelectorAll('.violation-degree').forEach(el => {
+                el.classList.remove('selected-violation');
+            });
+            
+            // تحديد الدرجة المختارة
+            document.getElementById(`degree${degree}`).classList.add('selected-violation');
+            
+            // تحديث قائمة المخالفات
+            updateViolationsList(degree);
+        }
+
+        // تحديث قائمة المخالفات بناءً على الدرجة المختارة
+        function updateViolationsList(degree) {
+            const violationSelect = document.getElementById('violationType');
+            violationSelect.innerHTML = '<option value="">اختر المخالفة</option>';
+            
+            if (!violationsByDegree[degree]) return;
+            
+            violationsByDegree[degree].forEach(violation => {
+                const option = document.createElement('option');
+                option.value = JSON.stringify({
+                    id: violation.id,
+                    name: violation.name,
+                    points: violation.points,
+                    degree
+                });
+                option.textContent = violation.name;
+                violationSelect.appendChild(option);
+            });
+        }
+        // الحصول على اسم الجهة المرسلة
+        function getSenderName() {
+            const senderSelect = document.getElementById('senderSelect');
+            const selectedSender = senderSelect.value;
+            
+            if (selectedSender === 'custom') {
+                const customSenderName = document.getElementById('customSenderName').value.trim();
+                return customSenderName || "إدارة المدرسة";
+            }
+            
+            return selectedSender;
+        }
+
+        // حفظ عملية رصد مخالفة
+        function saveOperation() {
+            const selectedClass = document.getElementById('classSelect').value;
+            const selectedStudent = document.getElementById('studentSelect').value;
+            const violationTypeSelect = document.getElementById('violationType');
+            const violationType = violationTypeSelect.value ? JSON.parse(violationTypeSelect.value) : null;
+            const note = document.getElementById('noteInput').value || "لا توجد ملاحظات إضافية";
+            const sender = getSenderName();
+            const currentDate = new Date();
+            const formattedDate = currentDate.toLocaleDateString('ar-SA');
+
+            if (!selectedClass || !selectedStudent || !violationType || !sender || selectedDegree === null) {
+                alert("يرجى إدخال جميع الحقول المطلوبة واختيار درجة المخالفة.");
+                return;
+            }
+
+            const operation = { 
+                id: Date.now(),
+                date: formattedDate, 
+                timestamp: currentDate.getTime(), // للترتيب وفق التاريخ
+                class: selectedClass, 
+                student: selectedStudent, 
+                violationType,
+                note, 
+                sender 
+            };
+
+            let operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+            operations.push(operation);
+            localStorage.setItem(STORAGE_KEYS.VIOLATIONS, JSON.stringify(operations));
+
+            // تحديث الإحصائيات بعد إضافة مخالفة جديدة
+            updateAllStatistics();
+
+            alert("تم حفظ المخالفة بنجاح!");
+            
+            // إعادة تعيين النموذج
+            document.getElementById('noteInput').value = '';
+            document.getElementById('violationType').selectedIndex = 0;
+            document.querySelectorAll('.violation-degree').forEach(el => {
+                el.classList.remove('selected-violation');
+            });
+            selectedDegree = null;
+        }
+
+        // عرض المخالفات المحفوظة
+        function displayOperations() {
+            const container = document.getElementById('operationsContainer');
+            const table = document.getElementById('operationsTable');
+            const tbody = table.querySelector('tbody');
+            tbody.innerHTML = '';
+
+            const operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+
+            if (operations.length === 0) {
+                alert("لا توجد مخالفات محفوظة.");
+                container.classList.add('hidden');
+                return;
+            }
+
+            // ترتيب المخالفات من الأحدث للأقدم
+            operations.sort((a, b) => {
+                return (b.timestamp || 0) - (a.timestamp || 0);
+            });
+
+            operations.forEach(op => {
+                const row = document.createElement('tr');
+                const violationType = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                
+                row.innerHTML = `
+                    <td class="py-2 px-3 border-b">${op.date}</td>
+                    <td class="py-2 px-3 border-b">${op.class}</td>
+                    <td class="py-2 px-3 border-b">${op.student}</td>
+                    <td class="py-2 px-3 border-b">${violationType?.name || 'غير محدد'}</td>
+                    <td class="py-2 px-3 border-b">الدرجة ${violationType?.degree || 'غير محدد'}</td>
+                    <td class="py-2 px-3 border-b">${violationType?.points || 'غير محدد'} درجة</td>
+                    <td class="py-2 px-3 border-b">${op.sender}</td>
+                    <td class="py-2 px-3 border-b">
+                        <button class="text-blue-600 hover:text-blue-800 ml-2" onclick="printSpecificReceipt(${op.id})">طباعة</button>
+                        <button class="text-green-600 hover:text-green-800 ml-2" onclick="sendSpecificWhatsApp(${op.id})">واتساب</button>
+                        <button class="text-red-600 hover:text-red-800" onclick="deleteOperation(${op.id})">حذف</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+
+            container.classList.remove('hidden');
+        }
+
+        // حذف مخالفة
+        function deleteOperation(id) {
+            if (confirm("هل أنت متأكد من حذف هذه المخالفة؟")) {
+                const operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+                const updatedOperations = operations.filter(op => op.id !== id);
+                localStorage.setItem(STORAGE_KEYS.VIOLATIONS, JSON.stringify(updatedOperations));
+                displayOperations();
+                updateAllStatistics();
+            }
+        }
+
+        // عرض تقرير حسب الطالب
+        function filterByStudent() {
+            const student = prompt("أدخل اسم الطالب للبحث:");
+            if (!student) return;
+            
+            const operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+            const filtered = operations.filter(op => op.student.includes(student));
+            
+            if (filtered.length === 0) {
+                alert("لا توجد مخالفات مسجلة لهذا الطالب.");
+                return;
+            }
+            
+            displayFilteredOperations(filtered, `مخالفات الطالب: ${student}`);
+        }
+
+        // عرض تقرير حسب الفصل
+        function filterByClass() {
+            const classSelect = document.getElementById('classSelect').value;
+            let className = classSelect;
+            
+            if (!className) {
+                className = prompt("أدخل اسم الفصل للبحث:");
+                if (!className) return;
+            }
+            
+            const operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+            const filtered = operations.filter(op => op.class === className);
+            
+            if (filtered.length === 0) {
+                alert("لا توجد مخالفات مسجلة لهذا الفصل.");
+                return;
+            }
+            
+            displayFilteredOperations(filtered, `مخالفات الفصل: ${className}`);
+        }
+
+        // عرض المخالفات المفلترة
+        function displayFilteredOperations(operations, title) {
+            const printWindow = window.open('', '_blank');
+            
+            let tableContent = `
+                <div style="font-family: 'Tajawal', sans-serif; direction: rtl; padding: 20px;">
+                    <h2 style="text-align: center;">${title}</h2>
+                    <table border="1" style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                        <thead>
+                            <tr style="background-color: #f2f2f2;">
+                                <th style="padding: 8px;">التاريخ</th>
+                                <th style="padding: 8px;">الفصل</th>
+                                <th style="padding: 8px;">الطالب</th>
+                                <th style="padding: 8px;">المخالفة</th>
+                                <th style="padding: 8px;">درجة المخالفة</th>
+                                <th style="padding: 8px;">خصم الدرجات</th>
+                                <th style="padding: 8px;">الجهة</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+            
+            // ترتيب المخالفات من الأحدث للأقدم
+            operations.sort((a, b) => {
+                return (b.timestamp || 0) - (a.timestamp || 0);
+            });
+            
+            operations.forEach(op => {
+                const violationType = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                
+                tableContent += `
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${op.date}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${op.class}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${op.student}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${violationType?.name || 'غير محدد'}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">الدرجة ${violationType?.degree || 'غير محدد'}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${violationType?.points || 'غير محدد'} درجة</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${op.sender}</td>
+                    </tr>
+                `;
+            });
+            
+            tableContent += `
+                        </tbody>
+                    </table>
+                    
+                    <div style="margin-top: 30px; text-align: right;">
+                        <p>إجمالي المخالفات: ${operations.length}</p>
+                        <p>إجمالي الدرجات المحسومة: ${operations.reduce((total, op) => {
+                            const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                            return total + (vt?.points || 0);
+                        }, 0)} درجة</p>
+                        <p>تاريخ التقرير: ${new Date().toLocaleDateString('ar-SA')}</p>
+                    </div>
+                </div>
+            `;
+            
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>${title}</title>
+                    <meta charset="UTF-8">
+                    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+                </head>
+                <body>${tableContent}</body>
+                </html>
+            `);
+            printWindow.document.close();
+            printWindow.print();
+        }
+
+        // طباعة إيصال مخالفة
+        function printReceipt() {
+            const selectedClass = document.getElementById('classSelect').value;
+            const selectedStudent = document.getElementById('studentSelect').value;
+            const violationType = document.getElementById('violationType').value ? JSON.parse(document.getElementById('violationType').value) : null;
+            const note = document.getElementById('noteInput').value || "لا توجد ملاحظات إضافية";
+            const sender = getSenderName();
+            const currentDate = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            if (!selectedClass || !selectedStudent || !violationType || !sender || selectedDegree === null) {
+                alert("يرجى إدخال جميع الحقول المطلوبة واختيار درجة المخالفة.");
+                return;
+            }
+
+            generateReceiptAndPrint({
+                class: selectedClass,
+                student: selectedStudent,
+                violationType,
+                note,
+                sender,
+                date: currentDate
+            });
+        }
+        
+        // طباعة إيصال لمخالفة محددة
+        function printSpecificReceipt(id) {
+            const operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+            const operation = operations.find(op => op.id === id);
+            
+            if (!operation) {
+                alert("لم يتم العثور على المخالفة.");
+                return;
+            }
+            
+            const formattedDate = new Date(operation.timestamp || Date.now()).toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            generateReceiptAndPrint({
+                class: operation.class,
+                student: operation.student,
+                violationType: operation.violationType,
+                note: operation.note,
+                sender: operation.sender,
+                date: formattedDate
+            });
+        }
+        
+        // توليد وطباعة الإيصال - تمت إزالة الإجراءات كما طُلب
+        function generateReceiptAndPrint(data) {
+            const violationType = typeof data.violationType === 'string' ? JSON.parse(data.violationType) : data.violationType;
+            
+            let receiptStyle = '';
+            switch(parseInt(violationType.degree)) {
+                case 1: receiptStyle = 'border-top: 10px solid #86efac;'; break; // خفيفة
+                case 2: receiptStyle = 'border-top: 10px solid #fef08a;'; break; // متوسطة
+                case 3: receiptStyle = 'border-top: 10px solid #fed7aa;'; break; // شديدة
+                case 4: receiptStyle = 'border-top: 10px solid #fecaca;'; break; // خطيرة
+                default: receiptStyle = 'border-top: 10px solid #e5e7eb;';
+            }
+            
+            const receiptContent = `
+                <div style="font-family: 'Tajawal', sans-serif; direction: rtl; padding: 20px; box-sizing: border-box; width: 100%; max-width: 800px; margin: 0 auto; ${receiptStyle} border-radius: 10px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);">
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <h2 style="font-size: 24px; margin-bottom: 5px;">مدرسة حنين الابتدائية</h2>
+                        <h3 style="font-size: 20px; color: #4b5563; margin-top: 0;">إشعار مخالفة سلوكية</h3>
+                    </div>
+
+                    <div style="font-size: 16px; line-height: 1.8;">
+                        <p><strong>اسم الطالب:</strong> ${data.student}</p>
+                        <p><strong>الصف والفصل:</strong> ${data.class}</p>
+                        <p><strong>التاريخ:</strong> ${data.date}</p>
+                        <p><strong>نوع المخالفة:</strong> ${violationType.name}</p>
+                        <p><strong>درجة المخالفة:</strong> الدرجة ${violationType.degree} (خصم ${violationType.points} درجة/درجات)</p>
+                        <p><strong>الملاحظات:</strong> ${data.note}</p>
+                    </div>
+
+                    <p style="font-size: 16px; margin-top: 30px; line-height: 1.8;">
+                        نأمل التعاون في معالجة المخالفة المسجلة على الطالب وتعديل سلوكه، والسعي لتعويض الخصم من خلال السلوك المميز .. شاكرين لكم تعاونكم.
+                    </p>
+
+                    <p style="font-size: 16px; line-height: 1.8;"><strong>الجهة:</strong> ${data.sender}</p>
+
+                    <div style="margin-top: 50px; display: flex; justify-content: space-between; font-size: 16px;">
+                        <div style="width: 45%; text-align: center;">
+                            <p><strong>توقيع الطالب</strong></p>
+                            <div style="border-bottom: 1px solid #000; margin-top: 30px;"></div>
+                        </div>
+                        <div style="width: 45%; text-align: center;">
+                            <p><strong>توقيع ولي الأمر</strong></p>
+                            <div style="border-bottom: 1px solid #000; margin-top: 30px;"></div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 30px; text-align: center; font-size: 14px; color: #6b7280;">
+                        <p>يعتبر هذا تعهد من الطالب بعدم تكرار المخالفة السلوكية ويحق للمدرسة تطبيق العقوبات المنصوص عليها وفقا للائحة السلوك والمواظبة.</p>
+                    </div>
+                </div>
+            `;
+
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>إيصال مخالفة</title>
+                    <meta charset="UTF-8">
+                    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+                    <style>
+                        @media print {
+                            body { margin: 0; padding: 20px; }
+                        }
+                    </style>
+                </head>
+                <body>${receiptContent}</body>
+                </html>
+            `);
+            printWindow.document.close();
+            setTimeout(() => {
+                printWindow.print();
+            }, 500);
+        }
+
+        // الحصول على رقم هاتف ولي أمر الطالب
+        function getParentPhone(studentName) {
+            try {
+                const studentsDetails = JSON.parse(localStorage.getItem(STORAGE_KEYS.STUDENTS_DETAILS) || '[]');
+                const student = studentsDetails.find(s => s.name === studentName);
+                
+                if (student && student.phone) {
+                    return student.phone;
+                }
+                
+                return null;
+            } catch (e) {
+                console.error("خطأ في استرجاع رقم الهاتف:", e);
+                return null;
+            }
+        }
+
+        // تنسيق رقم الهاتف للواتساب
+        function formatPhoneNumber(phoneNumber) {
+            // إزالة الأحرف غير الرقمية
+            let formattedPhone = phoneNumber.replace(/\D/g, '');
+            
+            // إذا بدأ بصفر، نستبدله بـ 966
+            if (formattedPhone.startsWith('0')) {
+                formattedPhone = '966' + formattedPhone.substring(1);
+            } 
+            // إذا لم يبدأ بـ 966، نضيفه
+            else if (!formattedPhone.startsWith('966')) {
+                formattedPhone = '966' + formattedPhone;
+            }
+            
+            return formattedPhone;
+        }
+
+        // حفظ رقم هاتف ولي الأمر للاستخدام المستقبلي
+        function saveParentPhone(studentName, className, phoneNumber) {
+            try {
+                let studentsDetails = JSON.parse(localStorage.getItem(STORAGE_KEYS.STUDENTS_DETAILS) || '[]');
+                
+                // البحث عن الطالب
+                const studentIndex = studentsDetails.findIndex(s => s.name === studentName);
+                
+                if (studentIndex >= 0) {
+                    // تحديث رقم الهاتف إذا وجد الطالب
+                    studentsDetails[studentIndex].phone = phoneNumber;
+                } else {
+                    // إضافة الطالب مع رقم الهاتف إذا لم يوجد
+                    studentsDetails.push({
+                        name: studentName,
+                        class: className,
+                        phone: phoneNumber
+                    });
+                }
+                
+                // حفظ التغييرات
+                localStorage.setItem(STORAGE_KEYS.STUDENTS_DETAILS, JSON.stringify(studentsDetails));
+                
+            } catch (e) {
+                console.error("خطأ في حفظ رقم الهاتف:", e);
+            }
+        }
+
+        // إرسال رسالة واتساب للمخالفة الحالية - محسنة
+        function sendWhatsApp() {
+            const selectedClass = document.getElementById('classSelect').value;
+            const selectedStudent = document.getElementById('studentSelect').value;
+            const violationType = document.getElementById('violationType').value ? JSON.parse(document.getElementById('violationType').value) : null;
+            const note = document.getElementById('noteInput').value || "لا توجد ملاحظات إضافية";
+            const sender = getSenderName();
+            const currentDate = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            if (!selectedClass || !selectedStudent || !violationType || !sender || selectedDegree === null) {
+                alert("يرجى إدخال جميع الحقول المطلوبة واختيار درجة المخالفة.");
+                return;
+            }
+
+            // البحث عن رقم هاتف ولي الأمر
+            let phoneNumber = getParentPhone(selectedStudent);
+            
+            // إذا لم نجد الرقم، نطلب من المستخدم إدخاله
+            if (!phoneNumber) {
+                phoneNumber = prompt("لم يتم العثور على رقم هاتف ولي الأمر، يرجى إدخاله (يمكن إضافة 966 في البداية):", "");
+                if (!phoneNumber) return;
+                
+                // تنسيق رقم الهاتف
+                phoneNumber = formatPhoneNumber(phoneNumber);
+                
+                // حفظ رقم الهاتف للاستخدام المستقبلي
+                saveParentPhone(selectedStudent, selectedClass, phoneNumber);
+            }
+
+            createAndSendWhatsAppMessage({
+                class: selectedClass,
+                student: selectedStudent,
+                violationType,
+                note,
+                sender,
+                date: currentDate
+            }, phoneNumber);
+        }
+        
+        // إرسال رسالة واتساب لمخالفة محددة - محسنة
+        function sendSpecificWhatsApp(id) {
+            const operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+            const operation = operations.find(op => op.id === id);
+            
+            if (!operation) {
+                alert("لم يتم العثور على المخالفة.");
+                return;
+            }
+            
+            const formattedDate = new Date(operation.timestamp || Date.now()).toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            
+            // البحث عن رقم هاتف ولي الأمر
+            let phoneNumber = getParentPhone(operation.student);
+            
+            // إذا لم نجد الرقم، نطلب من المستخدم إدخاله
+            if (!phoneNumber) {
+                phoneNumber = prompt("لم يتم العثور على رقم هاتف ولي الأمر، يرجى إدخاله (يمكن إضافة 966 في البداية):", "");
+                if (!phoneNumber) return;
+                
+                // تنسيق رقم الهاتف
+                phoneNumber = formatPhoneNumber(phoneNumber);
+                
+                // حفظ رقم الهاتف للاستخدام المستقبلي
+                saveParentPhone(operation.student, operation.class, phoneNumber);
+            }
+            
+            createAndSendWhatsAppMessage({
+                class: operation.class,
+                student: operation.student,
+                violationType: operation.violationType,
+                note: operation.note,
+                sender: operation.sender,
+                date: formattedDate
+            }, phoneNumber);
+        }
+        
+        // إنشاء وإرسال رسالة واتساب
+        function createAndSendWhatsAppMessage(data, phone) {
+            const violationType = typeof data.violationType === 'string' ? JSON.parse(data.violationType) : data.violationType;
+            
+            const message = `*إشعار مخالفة سلوكية*
+            
+اسم الطالب: ${data.student}
+الصف والفصل: ${data.class}
+التاريخ: ${data.date}
+نوع المخالفة: ${violationType.name}
+درجة المخالفة: الدرجة ${violationType.degree} (خصم ${violationType.points} درجة/درجات)
+${data.note && data.note !== "لا توجد ملاحظات إضافية" ? `ملاحظات: ${data.note}` : ''}
+
+نأمل التعاون في معالجة المخالفة المسجلة على الطالب وتعديل سلوكه.
+والحرص على تعويض الخصم من خلال السلوك المميز.
+شاكرين لكم تعاونكم.
+
+${data.sender}`;
+
+            const whatsappUrl = `https://api.whatsapp.com/send?phone=${phone}&text=${encodeURIComponent(message)}`;
+            window.open(whatsappUrl, '_blank');
+        }
+
+        // طباعة تقرير شامل بجميع المخالفات
+        function printAllOperations() {
+            const operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+
+            if (operations.length === 0) {
+                alert("لا توجد مخالفات محفوظة للطباعة.");
+                return;
+            }
+
+            // تجميع المخالفات حسب الدرجة
+            const violationsByDegreeStats = {1: [], 2: [], 3: [], 4: []};
+            operations.forEach(op => {
+                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                if (vt && vt.degree) {
+                    violationsByDegreeStats[vt.degree].push(op);
+                }
+            });
+
+            let printContent = `
+                <div style="font-family: 'Tajawal', sans-serif; direction: rtl; padding: 20px;">
+                    <h2 style="text-align: center;">تقرير المخالفات السلوكية</h2>
+                    <p style="text-align: center;">مدرسة حنين الابتدائية</p>
+                    <p style="text-align: center;">تاريخ التقرير: ${new Date().toLocaleDateString('ar-SA')}</p>
+                    
+                    <div style="margin-top: 30px;">
+                        <h3>ملخص المخالفات:</h3>
+                        <ul>
+                            <li>إجمالي المخالفات: ${operations.length}</li>
+                            <li>مخالفات الدرجة الأولى: ${violationsByDegreeStats[1].length} (${violationsByDegreeStats[1].length} درجة)</li>
+                            <li>مخالفات الدرجة الثانية: ${violationsByDegreeStats[2].length} (${violationsByDegreeStats[2].length * 2} درجة)</li>
+                            <li>مخالفات الدرجة الثالثة: ${violationsByDegreeStats[3].length} (${violationsByDegreeStats[3].length * 3} درجة)</li>
+                            <li>مخالفات الدرجة الرابعة: ${violationsByDegreeStats[4].length} (${violationsByDegreeStats[4].length * 10} درجة)</li>
+                            <li>إجمالي الدرجات المحسومة: ${operations.reduce((total, op) => {
+                                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                                return total + (vt?.points || 0);
+                            }, 0)} درجة</li>
+                        </ul>
+                    </div>
+            `;
+
+            // إضافة جدول بمخالفات كل درجة
+            for (let degree = 1; degree <= 4; degree++) {
+                if (violationsByDegreeStats[degree].length > 0) {
+                    printContent += `
+                        <div style="margin-top: 30px;">
+                            <h3>مخالفات الدرجة ${degree} (${degree === 4 ? '10 درجات' : degree === 3 ? '3 درجات' : degree === 2 ? 'درجتين' : 'درجة واحدة'}):</h3>
+                            <table border="1" style="width: 100%; border-collapse: collapse; text-align: right;">
+                                <thead>
+                                    <tr style="background-color: #f2f2f2;">
+                                        <th style="padding: 8px;">التاريخ</th>
+                                        <th style="padding: 8px;">الفصل</th>
+                                        <th style="padding: 8px;">الطالب</th>
+                                        <th style="padding: 8px;">المخالفة</th>
+                                        <th style="padding: 8px;">ملاحظات</th>
+                                        <th style="padding: 8px;">الجهة</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                    `;
+
+                    violationsByDegreeStats[degree].forEach(op => {
+                        const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                        printContent += `
+                            <tr>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${op.date}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${op.class}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${op.student}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${vt?.name || 'غير محدد'}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${op.note}</td>
+                                <td style="padding: 8px; border: 1px solid #ddd;">${op.sender}</td>
+                            </tr>
+                        `;
+                    });
+
+                    printContent += `
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                }
+            }
+
+            // إضافة إحصائيات حسب الفصل
+            printContent += `
+                <div style="margin-top: 30px; page-break-before: always;">
+                    <h3>إحصائيات المخالفات حسب الفصل:</h3>
+                    <table border="1" style="width: 100%; border-collapse: collapse; text-align: center;">
+                        <thead>
+                            <tr style="background-color: #f2f2f2;">
+                                <th style="padding: 8px;">الفصل</th>
+                                <th style="padding: 8px;">الدرجة الأولى</th>
+                                <th style="padding: 8px;">الدرجة الثانية</th>
+                                <th style="padding: 8px;">الدرجة الثالثة</th>
+                                <th style="padding: 8px;">الدرجة الرابعة</th>
+                                <th style="padding: 8px;">المجموع</th>
+                                <th style="padding: 8px;">إجمالي الدرجات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            // حساب المخالفات لكل فصل
+            const classCounts = {};
+            operations.forEach(op => {
+                const className = op.class;
+                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                
+                if (!classCounts[className]) {
+                    classCounts[className] = {1: 0, 2: 0, 3: 0, 4: 0, total: 0, points: 0};
+                }
+                
+                if (vt && vt.degree) {
+                    classCounts[className][vt.degree]++;
+                    classCounts[className].total++;
+                    classCounts[className].points += vt.points || 0;
+                }
+            });
+
+            // إضافة الصفوف لكل فصل
+            Object.keys(classCounts).sort().forEach(className => {
+                const counts = classCounts[className];
+                printContent += `
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${className}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${counts[1]}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${counts[2]}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${counts[3]}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;">${counts[4]}</td>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>${counts.total}</strong></td>
+                        <td style="padding: 8px; border: 1px solid #ddd;"><strong>${counts.points}</strong></td>
+                    </tr>
+                `;
+            });
+
+            printContent += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            // إضافة الطلاب الأكثر مخالفات
+            const studentViolations = {};
+            operations.forEach(op => {
+                const student = op.student;
+                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                
+                if (!studentViolations[student]) {
+                    studentViolations[student] = {count: 0, class: op.class, points: 0};
+                }
+                
+                studentViolations[student].count++;
+                studentViolations[student].points += vt?.points || 0;
+            });
+
+            // ترتيب الطلاب حسب عدد المخالفات والنقاط
+            const sortedStudents = Object.keys(studentViolations)
+                .sort((a, b) => {
+                    if (studentViolations[b].points !== studentViolations[a].points) {
+                        return studentViolations[b].points - studentViolations[a].points;
+                    }
+                    return studentViolations[b].count - studentViolations[a].count;
+                })
+                .slice(0, 10); // أخذ أعلى 10 طلاب فقط
+
+            if (sortedStudents.length > 0) {
+                printContent += `
+                    <div style="margin-top: 30px;">
+                        <h3>الطلاب الأكثر مخالفات:</h3>
+                        <table border="1" style="width: 100%; border-collapse: collapse; text-align: right;">
+                            <thead>
+                                <tr style="background-color: #f2f2f2;">
+                                    <th style="padding: 8px;">#</th>
+                                    <th style="padding: 8px;">اسم الطالب</th>
+                                    <th style="padding: 8px;">الفصل</th>
+                                    <th style="padding: 8px;">عدد المخالفات</th>
+                                    <th style="padding: 8px;">الدرجات المحسومة</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                sortedStudents.forEach((student, index) => {
+                    printContent += `
+                        <tr>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${index + 1}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${student}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${studentViolations[student].class}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${studentViolations[student].count}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${studentViolations[student].points}</td>
+                        </tr>
+                    `;
+                });
+
+                printContent += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            // إضافة أكثر المخالفات شيوعًا
+            const violationCounts = {};
+            operations.forEach(op => {
+                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                if (vt && vt.name) {
+                    if (!violationCounts[vt.name]) {
+                        violationCounts[vt.name] = { count: 0, degree: vt.degree, points: vt.points };
+                    }
+                    violationCounts[vt.name].count++;
+                }
+            });
+
+            const sortedViolations = Object.keys(violationCounts)
+                .sort((a, b) => violationCounts[b].count - violationCounts[a].count)
+                .slice(0, 10);
+
+            if (sortedViolations.length > 0) {
+                printContent += `
+                    <div style="margin-top: 30px;">
+                        <h3>أكثر المخالفات شيوعًا:</h3>
+                        <table border="1" style="width: 100%; border-collapse: collapse; text-align: right;">
+                            <thead>
+                                <tr style="background-color: #f2f2f2;">
+                                    <th style="padding: 8px;">المخالفة</th>
+                                    <th style="padding: 8px;">درجة المخالفة</th>
+                                    <th style="padding: 8px;">عدد المرات</th>
+                                    <th style="padding: 8px;">النسبة</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                sortedViolations.forEach(violation => {
+                    const percentage = ((violationCounts[violation].count / operations.length) * 100).toFixed(1);
+                    printContent += `
+                        <tr>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${violation}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">الدرجة ${violationCounts[violation].degree}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${violationCounts[violation].count}</td>
+                            <td style="padding: 8px; border: 1px solid #ddd;">${percentage}%</td>
+                        </tr>
+                    `;
+                });
+
+                printContent += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+            }
+
+            printContent += `
+                <div style="margin-top: 50px; text-align: center;">
+                    <p>تم إنشاء هذا التقرير بواسطة نظام رصد المخالفات السلوكية</p>
+                </div>
+            `;
+
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>تقرير المخالفات السلوكية</title>
+                    <meta charset="UTF-8">
+                    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+                    <style>
+                        body { font-family: 'Tajawal', sans-serif; direction: rtl; }
+                        @media print {
+                            body { margin: 0; padding: 20px; }
+                            table { page-break-inside: auto; }
+                            tr { page-break-inside: avoid; page-break-after: auto; }
+                        }
+                    </style>
+                </head>
+                <body>${printContent}</body>
+                </html>
+            `);
+            printWindow.document.close();
+            setTimeout(() => {
+                printWindow.print();
+            }, 500);
+        }
+
+        // مسح جميع المخالفات المحفوظة
+        function clearOperations() {
+            if (confirm("هل أنت متأكد من حذف جميع المخالفات المحفوظة؟\nلا يمكن التراجع عن هذا الإجراء!")) {
+                localStorage.removeItem(STORAGE_KEYS.VIOLATIONS);
+                alert("تم مسح جميع المخالفات المحفوظة.");
+                const container = document.getElementById('operationsContainer');
+                container.classList.add('hidden');
+                updateAllStatistics();
+            }
+        }
+        
+        // تحديث الإحصائيات العامة
+        function updateAllStatistics() {
+            const operations = JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS)) || [];
+            
+            // الإحصائيات العامة
+            const totalViolations = operations.length;
+            document.getElementById('totalViolations').textContent = totalViolations;
+            
+            // عدد الطلاب المخالفين (فريدة)
+            const uniqueStudents = new Set();
+            operations.forEach(op => uniqueStudents.add(op.student));
+            document.getElementById('totalStudents').textContent = uniqueStudents.size;
+            
+            // إجمالي الدرجات المحسومة
+            const totalPoints = operations.reduce((total, op) => {
+                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                return total + (vt?.points || 0);
+            }, 0);
+            document.getElementById('totalPoints').textContent = totalPoints;
+            
+            // متوسط المخالفات للطالب
+            const avgViolations = uniqueStudents.size ? (totalViolations / uniqueStudents.size).toFixed(1) : '0';
+            document.getElementById('avgViolations').textContent = avgViolations;
+            
+            // تحديث الرسم البياني للمخالفات حسب الدرجة
+            updateViolationsByDegreeChart(operations);
+            
+            // تحديث الرسم البياني للمخالفات حسب الفصل
+            updateViolationsByClassChart(operations);
+            
+            // تحديث قائمة المخالفات الشائعة
+            updateCommonViolationsList(operations);
+            
+            // تحديث قائمة الطلاب الأكثر مخالفات
+            updateTopStudentsList(operations);
+        }
+        
+        // تحديث الرسم البياني للمخالفات حسب الدرجة
+        function updateViolationsByDegreeChart(operations) {
+            const canvas = document.getElementById('violationsByDegreeChart');
+            const ctx = canvas.getContext('2d');
+            
+            // تفريغ أي رسم بياني سابق
+            if (window.degreeChart) {
+                window.degreeChart.destroy();
+            }
+            
+            // إحصاء المخالفات حسب الدرجة
+            const degreeStats = {1: 0, 2: 0, 3: 0, 4: 0};
+            operations.forEach(op => {
+                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                if (vt && vt.degree) {
+                    degreeStats[vt.degree]++;
+                }
+            });
+            
+            // إنشاء الرسم البياني
+            window.degreeChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['الدرجة الأولى', 'الدرجة الثانية', 'الدرجة الثالثة', 'الدرجة الرابعة'],
+                    datasets: [{
+                        label: 'عدد المخالفات',
+                        data: [degreeStats[1], degreeStats[2], degreeStats[3], degreeStats[4]],
+                        backgroundColor: [
+                            '#86efac', // الدرجة الأولى - أخضر فاتح
+                            '#fef08a', // الدرجة الثانية - أصفر فاتح
+                            '#fed7aa', // الدرجة الثالثة - برتقالي فاتح
+                            '#fecaca'  // الدرجة الرابعة - أحمر فاتح
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: {
+                                font: {
+                                    family: 'Tajawal'
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // تحديث الرسم البياني للمخالفات حسب الفصل
+        function updateViolationsByClassChart(operations) {
+            const canvas = document.getElementById('violationsByClassChart');
+            const ctx = canvas.getContext('2d');
+            
+            // تفريغ أي رسم بياني سابق
+            if (window.classChart) {
+                window.classChart.destroy();
+            }
+            
+            // إحصاء المخالفات حسب الفصل
+            const classStats = {};
+            operations.forEach(op => {
+                const className = op.class;
+                if (!classStats[className]) {
+                    classStats[className] = 0;
+                }
+                classStats[className]++;
+            });
+            
+            // ترتيب البيانات تنازليًا واختيار أعلى 8 فصول
+            const sortedClasses = Object.keys(classStats)
+                .sort((a, b) => classStats[b] - classStats[a])
+                .slice(0, 8);
+            
+            // إنشاء الرسم البياني
+            window.classChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sortedClasses,
+                    datasets: [{
+                        label: 'عدد المخالفات',
+                        data: sortedClasses.map(className => classStats[className]),
+                        backgroundColor: 'rgba(59, 130, 246, 0.7)', // أزرق
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                font: {
+                                    family: 'Tajawal'
+                                }
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                font: {
+                                    family: 'Tajawal'
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    }
+                }
+            });
+        }
+        
+        // تحديث قائمة المخالفات الشائعة
+        function updateCommonViolationsList(operations) {
+            const container = document.getElementById('commonViolationsList');
+            container.innerHTML = '';
+            
+            if (operations.length === 0) {
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = '<td colspan="3" class="py-2 px-3 border-b text-center">لا توجد مخالفات مسجلة</td>';
+                container.appendChild(emptyRow);
+                return;
+            }
+            
+            // إحصاء المخالفات حسب النوع
+            const violationCounts = {};
+            operations.forEach(op => {
+                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                if (vt && vt.name) {
+                    if (!violationCounts[vt.name]) {
+                        violationCounts[vt.name] = { count: 0, degree: vt.degree };
+                    }
+                    violationCounts[vt.name].count++;
+                }
+            });
+            
+            // ترتيب المخالفات تنازليًا حسب التكرار
+            const sortedViolations = Object.keys(violationCounts)
+                .sort((a, b) => violationCounts[b].count - violationCounts[a].count);
+            
+            // إضافة الصفوف إلى الجدول
+            sortedViolations.forEach(violation => {
+                const row = document.createElement('tr');
+                const percentage = ((violationCounts[violation].count / operations.length) * 100).toFixed(1);
+                
+                row.innerHTML = `
+                    <td class="py-2 px-3 border-b">${violation}</td>
+                    <td class="py-2 px-3 border-b text-center">${violationCounts[violation].count}</td>
+                    <td class="py-2 px-3 border-b text-center">${percentage}%</td>
+                `;
+                container.appendChild(row);
+            });
+        }
+        
+        // تحديث قائمة الطلاب الأكثر مخالفات
+        function updateTopStudentsList(operations) {
+            const container = document.getElementById('topStudentsList');
+            container.innerHTML = '';
+            
+            if (operations.length === 0) {
+                const emptyRow = document.createElement('tr');
+                emptyRow.innerHTML = '<td colspan="4" class="py-2 px-3 border-b text-center">لا توجد مخالفات مسجلة</td>';
+                container.appendChild(emptyRow);
+                return;
+            }
+            
+            // إحصاء المخالفات حسب الطالب
+            const studentStats = {};
+            operations.forEach(op => {
+                const student = op.student;
+                const vt = typeof op.violationType === 'string' ? JSON.parse(op.violationType) : op.violationType;
+                
+                if (!studentStats[student]) {
+                    studentStats[student] = { count: 0, class: op.class, points: 0 };
+                }
+                
+                studentStats[student].count++;
+                studentStats[student].points += vt?.points || 0;
+            });
+            
+            // ترتيب الطلاب تنازليًا حسب عدد النقاط ثم عدد المخالفات
+            const sortedStudents = Object.keys(studentStats)
+                .sort((a, b) => {
+                    if (studentStats[b].points !== studentStats[a].points) {
+                        return studentStats[b].points - studentStats[a].points;
+                    }
+                    return studentStats[b].count - studentStats[a].count;
+                })
+                .slice(0, 10); // أعلى 10 طلاب
+            
+            // إضافة الصفوف إلى الجدول
+            sortedStudents.forEach(student => {
+                const row = document.createElement('tr');
+                
+                row.innerHTML = `
+                    <td class="py-2 px-3 border-b">${student}</td>
+                    <td class="py-2 px-3 border-b">${studentStats[student].class}</td>
+                    <td class="py-2 px-3 border-b text-center">${studentStats[student].count}</td>
+                    <td class="py-2 px-3 border-b text-center">${studentStats[student].points}</td>
+                `;
+                container.appendChild(row);
+            });
+        }
+        
+        // وظائف النسخ الاحتياطي واستعادة البيانات
+        
+        // إنشاء نسخة احتياطية
+        function createBackup() {
+            try {
+                // تجميع جميع البيانات المطلوب حفظها
+                const backup = {
+                    students: JSON.parse(localStorage.getItem(STORAGE_KEYS.STUDENTS) || '{}'),
+                    students_details: JSON.parse(localStorage.getItem(STORAGE_KEYS.STUDENTS_DETAILS) || '[]'),
+                    violations: JSON.parse(localStorage.getItem(STORAGE_KEYS.VIOLATIONS) || '[]'),
+                    settings: JSON.parse(localStorage.getItem(STORAGE_KEYS.SETTINGS) || '{}'),
+                    timestamp: new Date().toISOString(),
+                    version: '1.0'
+                };
+                
+                // تحويل البيانات إلى نص JSON
+                const backupStr = JSON.stringify(backup);
+                
+                // إنشاء رابط تنزيل
+                const blob = new Blob([backupStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                // إنشاء عنصر رابط وهمي وتشغيل التنزيل
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `violations_backup_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                
+                // تنظيف
+                URL.revokeObjectURL(url);
+                
+                alert('تم إنشاء النسخة الاحتياطية بنجاح!');
+            } catch (error) {
+                console.error('خطأ في إنشاء النسخة الاحتياطية:', error);
+                alert('حدث خطأ أثناء إنشاء النسخة الاحتياطية.');
+            }
+        }
+        
+        // عرض نافذة استعادة النسخة الاحتياطية
+        function showRestoreBackupDialog() {
+            document.getElementById('restoreBackupDialog').classList.remove('hidden');
+        }
+        
+        // إغلاق نافذة استعادة النسخة الاحتياطية
+        function closeRestoreBackupDialog() {
+            document.getElementById('restoreBackupDialog').classList.add('hidden');
+            document.getElementById('backupFile').value = '';
+        }
+        
+        // استعادة من نسخة احتياطية
+        function restoreBackup() {
+            const fileInput = document.getElementById('backupFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('الرجاء اختيار ملف النسخة الاحتياطية أولاً.');
+                return;
+            }
+            
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const backup = JSON.parse(e.target.result);
+                    
+                    // التحقق من صحة بنية البيانات
+                    if (!backup.students || !backup.violations) {
+                        throw new Error('ملف النسخة الاحتياطية غير صالح أو تالف.');
+                    }
+                    
+                    // طلب تأكيد من المستخدم
+                    if (confirm('سيتم استبدال جميع البيانات الحالية بالبيانات من النسخة الاحتياطية. هل تريد المتابعة؟')) {
+                        // استعادة البيانات
+                        localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(backup.students));
+                        localStorage.setItem(STORAGE_KEYS.VIOLATIONS, JSON.stringify(backup.violations));
+                        
+                        // استعادة تفاصيل الطلاب (إذا وجدت)
+                        if (backup.students_details) {
+                            localStorage.setItem(STORAGE_KEYS.STUDENTS_DETAILS, JSON.stringify(backup.students_details));
+                        }
+                        
+                        if (backup.settings) {
+                            localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(backup.settings));
+                        }
+                        
+                        // إغلاق النافذة وتحديث الواجهة
+                        closeRestoreBackupDialog();
+                        
+                        // تحديث بيانات النظام
+                        studentsByClass = backup.students;
+                        populateClasses();
+                        updateAllStatistics();
+                        
+                        alert('تم استعادة النسخة الاحتياطية بنجاح!');
+                    }
+                } catch (error) {
+                    console.error('خطأ في استعادة النسخة الاحتياطية:', error);
+                    alert('حدث خطأ أثناء استعادة النسخة الاحتياطية. تأكد من أن الملف صحيح.');
+                }
+            };
+            
+            reader.onerror = function() {
+                alert('حدث خطأ أثناء قراءة الملف.');
+            };
+            
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
